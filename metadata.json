@@ -1,7 +1,8 @@
 {
-  "name": "Aura: Your AI Angel",
-  "description": "An empathetic AI companion that provides warm, comforting content suggestions based on your mood, notes, and the weather to help you find emotional stability.",
   "requestFramePermissions": [
-    "microphone"
-  ]
+    "microphone",
+    "geolocation"
+  ],
+  "name": "",
+  "description": ""
 }

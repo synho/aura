@@ -1,261 +1,247 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Mood, Weather, AuraResponse } from './types';
-import { WEATHER_OPTIONS, MicrophoneIcon } from './constants';
-import { getAuraResponse, generateAuraImage } from './services/geminiService';
+import { MicrophoneIcon, MOOD_OPTIONS } from './constants';
+import { getAuraResponse, generateMoodImage, getWeatherFromCoords } from './services/geminiService';
 import MoodSelector from './components/MoodSelector';
 import ResultCard from './components/ResultCard';
 import Loader from './components/Loader';
 import ErrorDisplay from './components/ErrorDisplay';
+import MapDisplay from './components/MapDisplay';
 
-// Fix: Add type definitions for the Web Speech API to resolve "Cannot find name 'SpeechRecognition'" errors.
-interface SpeechRecognitionErrorEvent extends Event {
-  readonly error: string;
-}
-
-interface SpeechRecognitionEvent extends Event {
-  readonly results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
-}
-
-interface SpeechRecognitionResult {
-  readonly isFinal: boolean;
-  readonly length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-}
-
-interface SpeechRecognitionAlternative {
-  readonly transcript: string;
-}
-
+// Add type definitions for the Web Speech API
 interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  onend: (() => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
   start(): void;
   stop(): void;
+  onresult: (event: any) => void;
+  onerror: (event: any) => void;
+  onend: () => void;
 }
-
-declare var SpeechRecognition: {
-  prototype: SpeechRecognition;
-  new(): SpeechRecognition;
-};
-
-// SpeechRecognition 타입을 확장하여 TypeScript에서 webkitSpeechRecognition을 인식하도록 합니다.
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: { new (): SpeechRecognition };
+    webkitSpeechRecognition: { new (): SpeechRecognition };
   }
 }
 
 const App: React.FC = () => {
-  const [mood, setMood] = useState<Mood | null>(null);
-  const [note, setNote] = useState<string>('');
-  const [weather, setWeather] = useState<Weather>(Weather.Sunny);
-  const [auraResponse, setAuraResponse] = useState<AuraResponse | null>(null);
-  const [auraImage, setAuraImage] = useState<string | null>(null);
+  const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
+  const [selectedWeather, setSelectedWeather] = useState<Weather | null>(null);
+  const [story, setStory] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string>('');
+  const [result, setResult] = useState<AuraResponse | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [coords, setCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [locationStatus, setLocationStatus] = useState<string>('위치 정보를 확인하는 중...');
 
-  const [isListening, setIsListening] = useState<boolean>(false);
-  const [isSpeechRecognitionSupported, setIsSpeechRecognitionSupported] = useState<boolean>(false);
+  const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
+  useEffect(() => {
+    if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'ko-KR';
+
+      recognitionRef.current.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+        setStory(story + finalTranscript + interimTranscript);
+      };
+
+      recognitionRef.current.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        setError('음성 인식 중 오류가 발생했습니다.');
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, [story]);
 
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      setIsSpeechRecognitionSupported(true);
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.lang = 'ko-KR';
-      recognition.interimResults = true;
-
-      recognition.onresult = (event) => {
-        const transcript = Array.from(event.results)
-          .map(result => result[0])
-          .map(result => result.transcript)
-          .join('');
-        setNote(transcript);
-      };
-
-      recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          setError('마이크 접근 권한이 필요합니다. 브라우저 설정을 확인해주세요.');
-        } else {
-          setError('음성 인식 중 오류가 발생했습니다.');
-        }
-        setIsListening(false);
-      };
-      
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
+    if (!navigator.geolocation) {
+      setLocationStatus('이 브라우저에서는 위치 정보가 지원되지 않습니다. 기본 날씨로 시작합니다.');
+      setSelectedWeather(Weather.Sunny);
+      return;
     }
 
-    return () => {
-      recognitionRef.current?.stop();
-    };
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        const currentCoords = { lat: latitude, lng: longitude };
+        setCoords(currentCoords);
+        try {
+          const weather = await getWeatherFromCoords(currentCoords.lat, currentCoords.lng);
+          setSelectedWeather(weather);
+          setLocationStatus(`현재 위치의 날씨는 '${weather}'입니다. 기분을 선택해주세요!`);
+        } catch (err) {
+          setLocationStatus('날씨 정보를 가져오지 못했습니다. 기본 날씨로 시작합니다.');
+          setSelectedWeather(Weather.Sunny); // Fallback
+        }
+      },
+      (geoError) => {
+        console.error("Geolocation error:", geoError);
+        setLocationStatus('위치 정보를 가져올 수 없습니다. 기본 날씨로 시작합니다.');
+        setSelectedWeather(Weather.Sunny); // Fallback
+      }
+    );
   }, []);
 
-  const handleVoiceInputToggle = () => {
-    if (!recognitionRef.current) return;
-
+  const handleListen = () => {
     if (isListening) {
-      recognitionRef.current.stop();
+      recognitionRef.current?.stop();
     } else {
-      recognitionRef.current.start();
+      recognitionRef.current?.start();
     }
     setIsListening(!isListening);
   };
 
-
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-    }
-    if (!mood) {
+    if (!selectedMood) {
       setError('먼저 지금 기분을 선택해주세요.');
+      return;
+    }
+    if (!selectedWeather) {
+      setError('날씨 정보가 로딩 중입니다. 잠시 후 다시 시도해주세요.');
       return;
     }
 
     setIsLoading(true);
-    setError(null);
-    setAuraResponse(null);
-    setAuraImage(null);
+    setError('');
+    setResult(null);
+    setImageUrl(null);
 
-    try {
-      const [textResponse, imageResponse] = await Promise.allSettled([
-        getAuraResponse(mood, note, weather),
-        generateAuraImage(mood, weather)
-      ]);
+    const [auraResponseResult, moodImageResult] = await Promise.allSettled([
+        getAuraResponse(selectedMood, selectedWeather, story),
+        generateMoodImage(selectedMood, selectedWeather)
+    ]);
 
-      if (textResponse.status === 'fulfilled') {
-        setAuraResponse(textResponse.value);
-        if (imageResponse.status === 'fulfilled') {
-          setAuraImage(imageResponse.value);
-        } else {
-          console.error("Image generation failed:", imageResponse.reason);
-          setAuraImage(null);
-        }
-      } else {
-        console.error("Aura response failed:", textResponse.reason);
-        const err = textResponse.reason;
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('알 수 없는 오류가 발생했습니다.');
-        }
-      }
-    } catch (err) {
-      console.error("An unexpected error occurred:", err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('알 수 없는 오류가 발생했습니다.');
-      }
-    } finally {
-      setIsLoading(false);
+    if (auraResponseResult.status === 'fulfilled') {
+        setResult(auraResponseResult.value);
+    } else {
+        console.error(auraResponseResult.reason);
+        setError(auraResponseResult.reason instanceof Error ? auraResponseResult.reason.message : 'Aura의 답변을 받아오는 중 오류가 발생했습니다.');
     }
-  }, [mood, note, weather, isListening]);
 
-  const handleMoodSelect = (selectedMood: Mood) => {
-    setMood(selectedMood);
-    if(error === '먼저 지금 기분을 선택해주세요.') {
-      setError(null);
+    if (moodImageResult.status === 'fulfilled') {
+        setImageUrl(moodImageResult.value);
+    } else {
+        console.error(moodImageResult.reason);
+        // Do not set a global error for image failure, just log it. The result card will render without it.
     }
-  }
+
+    setIsLoading(false);
+  };
+
+  const resetForm = () => {
+    setSelectedMood(null);
+    setStory('');
+    setResult(null);
+    setImageUrl(null);
+    setError('');
+    setIsLoading(false);
+  };
+  
+  const renderContent = () => {
+    if (isLoading) {
+      return <Loader />;
+    }
+    
+    if (result) {
+      return (
+        <div className="animate-fade-in">
+          <ResultCard data={result} imageUrl={imageUrl} />
+          {coords && <MapDisplay coords={coords} mood={selectedMood} />}
+          <div className="text-center mt-8">
+            <button
+              onClick={resetForm}
+              className="text-purple-600 hover:text-purple-800 font-semibold hover:underline"
+            >
+              다시하기
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in">
+        <MoodSelector selectedMood={selectedMood} onSelectMood={(mood) => { setSelectedMood(mood); setError(''); }} />
+
+        <div className="text-center text-gray-600 text-sm p-3 bg-purple-50 rounded-lg border border-purple-200">
+           <p>{locationStatus}</p>
+        </div>
+
+        <div>
+          <label htmlFor="story" className="block text-lg font-semibold text-gray-700 mb-3 text-center">
+            조금 더 이야기해 줄 수 있나요? (선택)
+          </label>
+          <div className="relative">
+            <textarea
+              id="story"
+              value={story}
+              onChange={(e) => setStory(e.target.value)}
+              rows={3}
+              className="w-full p-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
+              placeholder="오늘 있었던 일이나, 지금 드는 생각을 자유롭게 이야기해주세요."
+            />
+            <button 
+              type="button" 
+              onClick={handleListen}
+              className={`absolute bottom-3 right-3 p-1 rounded-full transition-colors ${isListening ? 'text-white bg-red-500 animate-pulse' : 'text-gray-400 hover:text-purple-600'}`}
+              aria-label={isListening ? '음성 입력 중지' : '음성 입력 시작'}
+            >
+              <MicrophoneIcon />
+            </button>
+          </div>
+        </div>
+
+        <div className="text-center pt-2">
+          <button
+            type="submit"
+            disabled={!selectedMood || isLoading || !selectedWeather}
+            className="w-full sm:w-auto px-10 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100"
+          >
+            아우라에게 추천받기
+          </button>
+        </div>
+      </form>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100 flex items-center justify-center p-4">
-      <main className="w-full max-w-2xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-800">Aura</h1>
-          <p className="text-lg text-gray-600 mt-2">당신의 마음을 돌보는 AI 엔젤</p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+      <div className="w-full max-w-2xl mx-auto">
+        <header className="text-center mb-8">
+          <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-indigo-600">
+            AURA
+          </h1>
+          <p className="mt-2 text-lg text-gray-600">
+            당신의 마음을 위한 AI 엔젤
+          </p>
+        </header>
 
-        <div className="bg-white/60 backdrop-blur-md p-6 sm:p-8 rounded-2xl shadow-md border border-white">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <MoodSelector selectedMood={mood} onSelectMood={handleMoodSelect} />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div>
-                <label htmlFor="weather" className="block text-sm font-medium text-gray-700 mb-1">
-                  오늘 날씨는 어떤가요?
-                </label>
-                <select
-                  id="weather"
-                  value={weather}
-                  onChange={(e) => setWeather(e.target.value as Weather)}
-                  className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500"
-                >
-                  {WEATHER_OPTIONS.map((w) => (
-                    <option key={w} value={w}>{w}</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="sm:col-span-2">
-                <label htmlFor="note" className="block text-sm font-medium text-gray-700 mb-1">
-                  조금 더 이야기해주실 수 있나요? (선택 사항)
-                </label>
-                <div className="relative">
-                  <textarea
-                    id="note"
-                    rows={3}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="예: 오늘 프로젝트 발표 때문에 힘들었어"
-                    className="w-full p-2 pr-12 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 resize-none"
-                  />
-                  {isSpeechRecognitionSupported && (
-                    <button
-                      type="button"
-                      onClick={handleVoiceInputToggle}
-                      disabled={isLoading}
-                      className={`absolute top-1/2 right-2 -translate-y-1/2 p-2 rounded-full transition-colors ${
-                        isListening 
-                          ? 'text-white bg-red-500 animate-pulse' 
-                          : 'text-gray-500 hover:bg-gray-200'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                      aria-label={isListening ? '음성 입력 중지' : '음성 입력 시작'}
-                    >
-                      <MicrophoneIcon />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all duration-300 ease-in-out disabled:bg-purple-300 disabled:cursor-not-allowed flex items-center justify-center"
-            >
-              {isLoading ? '생각 중...' : "아우라의 위로 받기"}
-            </button>
-            
-            {error && <ErrorDisplay message={error} />}
-          </form>
-        </div>
-
-        {isLoading && <div className="mt-8"><Loader /></div>}
-        {auraResponse && <ResultCard data={auraResponse} imageUrl={auraImage} />}
-      </main>
+        <main className="bg-white/60 backdrop-blur-md p-6 sm:p-8 rounded-2xl shadow-lg border border-purple-100 min-h-[30rem] flex flex-col justify-center">
+          {error && <ErrorDisplay message={error} />}
+          {!error && renderContent()}
+        </main>
+      </div>
     </div>
   );
 };
