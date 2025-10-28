@@ -3,6 +3,7 @@ import React from 'react';
 interface ErrorDisplayProps {
   error: Error | null;
   onClearError?: () => void;
+  onRetry?: () => void;
 }
 
 const ErrorIcon = () => (
@@ -13,41 +14,84 @@ const ErrorIcon = () => (
 
 const getErrorDetails = (error: Error) => {
     const message = error.message.toLowerCase();
+    const rateLimitUrl = "https://ai.google.dev/gemini-api/docs/rate-limits";
+    const usageUrl = "https://ai.dev/usage?tab=rate-limit";
 
+    if (message.includes('429') || message.includes('quota') || message.includes('resource_exhausted')) {
+        return {
+            title: 'API Usage Limit Reached',
+            description: "Aura is feeling very popular right now! It seems we've reached the current request limit for the AI service.",
+            suggestion: (
+                 <>
+                    Please try again in a little while. To learn more or monitor your usage, please visit:
+                    <div className="mt-2 flex flex-col items-start text-xs">
+                        <a href={rateLimitUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-red-600 hover:text-red-800 underline">
+                            Gemini API Rate Limits
+                        </a>
+                        <a href={usageUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-red-600 hover:text-red-800 underline mt-1">
+                            Your Usage Dashboard
+                        </a>
+                    </div>
+                </>
+            ),
+            isRetryable: false
+        };
+    }
     if (message.includes('api key') || message.includes('permission denied')) {
         return {
-            title: '서비스 연결 오류',
-            description: '아우라와 연결하는 데 필요한 인증 정보에 문제가 발생했습니다.',
-            suggestion: '개발자에게 문의하거나 잠시 후 다시 시도해주세요.'
+            title: 'Service Connection Error',
+            description: 'There was an issue with the credentials needed to connect to Aura.',
+            suggestion: 'Please contact the developer or try again shortly.',
+            isRetryable: false
         };
     }
     if (message.includes('network') || message.includes('failed to fetch')) {
         return {
-            title: '네트워크 연결 오류',
-            description: '인터넷에 연결되어 있지 않은 것 같아요. 아우라와 대화하려면 연결이 필요합니다.',
-            suggestion: 'Wi-Fi나 데이터 연결을 확인하고 다시 시도해주세요.'
+            title: 'Network Connection Error',
+            description: "It seems you're not connected to the internet. A connection is required to talk to Aura.",
+            suggestion: 'Please check your Wi-Fi or data connection and try again.',
+            isRetryable: true
         };
     }
     if (message.includes('geolocation')) {
          return {
-            title: '위치 정보 오류',
-            description: '현재 위치를 가져오는 데 실패했습니다. 브라우저의 위치 정보 접근 권한을 확인해주세요.',
-            suggestion: '페이지를 새로고침하고 위치 정보 접근을 허용해주세요.'
+            title: 'Location Error',
+            description: "Failed to get your current location. Please check your browser's location permissions.",
+            suggestion: 'Please refresh the page and allow location access.',
+            isRetryable: false
+        };
+    }
+    if (message.includes("aura's analysis failed")) {
+        return {
+            title: 'Voice Analysis Stumbled',
+            description: error.message.split(': ')[1] || "Aura couldn't quite catch the feeling in your voice this time.",
+            suggestion: 'Please try again. Speaking clearly for a few seconds usually helps.',
+            isRetryable: false
+        };
+    }
+    if (message.includes('microphone access was denied')) {
+         return {
+            title: 'Microphone Access Denied',
+            description: "Aura needs permission to use your microphone to hear your story.",
+            suggestion: 'Please check your browser settings to allow microphone access for this site.',
+            isRetryable: false
         };
     }
 
+
     return {
-        title: '알 수 없는 오류 발생',
-        description: '요청을 처리하는 중 예기치 않은 문제가 발생했습니다.',
-        suggestion: '잠시 후 다시 시도해보거나, 문제가 계속되면 새로고침해주세요.'
+        title: 'An Unknown Error Occurred',
+        description: 'An unexpected issue occurred while processing your request.',
+        suggestion: 'Please try again in a moment, or refresh the page if the problem persists.',
+        isRetryable: true
     };
 }
 
 
-const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onClearError }) => {
+const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onClearError, onRetry }) => {
   if (!error) return null;
 
-  const { title, description, suggestion } = getErrorDetails(error);
+  const { title, description, suggestion, isRetryable } = getErrorDetails(error);
 
   return (
     <div className="p-4 bg-red-50 border-l-4 border-red-400 text-red-800 rounded-r-lg animate-fade-in" role="alert">
@@ -55,12 +99,23 @@ const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ error, onClearError }) => {
         <div className="py-1">
           <ErrorIcon />
         </div>
-        <div className="ml-3">
+        <div className="ml-3 flex-1">
           <p className="font-bold">{title}</p>
           <p className="text-sm mt-1">{description}</p>
           <div className="mt-2 text-xs font-semibold bg-red-100 p-2 rounded">
-            <span className="font-bold">다음 단계:</span> {suggestion}
+            <span className="font-bold">Next step:</span> {suggestion}
           </div>
+          {isRetryable && onRetry && (
+            <div className="mt-4">
+              <button
+                type="button"
+                onClick={onRetry}
+                className="px-4 py-2 bg-red-500 text-white text-sm font-medium rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-50 focus:ring-red-500 transition-all duration-200 transform hover:scale-105"
+              >
+                Retry
+              </button>
+            </div>
+          )}
         </div>
         {onClearError && (
              <div className="ml-auto pl-3">

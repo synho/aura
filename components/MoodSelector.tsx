@@ -5,15 +5,20 @@ import { Mood } from '../types';
 interface MoodSelectorProps {
   selectedMood: Mood | null;
   onSelectMood: (mood: Mood) => void;
+  isAnalyzing?: boolean;
 }
 
-const MoodSelector: React.FC<MoodSelectorProps> = ({ selectedMood, onSelectMood }) => {
+const MoodSelector: React.FC<MoodSelectorProps> = ({ selectedMood, onSelectMood, isAnalyzing }) => {
+  const labelText = isAnalyzing 
+    ? "Aura is analyzing your voice and story..." 
+    : "How are you feeling right now?";
+
   return (
-    <div>
+    <div className={`transition-opacity duration-300 ${isAnalyzing ? 'opacity-60' : 'opacity-100'}`}>
       <label className="block text-lg font-semibold text-gray-700 mb-3 text-center">
-        지금 기분이 어떠신가요?
+        {labelText}
       </label>
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+      <div className={`grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 ${isAnalyzing ? 'pointer-events-none' : ''}`}>
         {MOOD_OPTIONS.map((option: MoodOption) => (
           <button
             key={option.value}

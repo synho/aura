@@ -21,7 +21,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, mood }) => {
   return (
     <div className="mt-8">
       <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-4 text-center">
-        당신이 있는 곳
+        Where you are
       </h3>
       <div className="relative rounded-xl overflow-hidden shadow-lg border border-gray-200 h-[300px] w-full">
         <iframe
@@ -47,7 +47,7 @@ const MapDisplay: React.FC<MapDisplayProps> = ({ coords, mood }) => {
       </div>
       {moodInfo && (
         <p className="text-center mt-3 text-gray-600">
-          오늘 {moodInfo.label} {moodInfo.emoji} 기분으로 이곳에 계셨군요.
+          So this is where you were, feeling {moodInfo.label.toLowerCase()} {moodInfo.emoji} today.
         </p>
       )}
     </div>

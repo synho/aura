@@ -1,17 +1,18 @@
 import { GoogleGenAI, Modality, Type } from "@google/genai";
-import { AuraResponse, Mood, Weather } from '../types';
+import { AuraResponse, Gender, Mood, Weather, AuraAnalysis } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const textModel = 'gemini-2.5-flash';
 const imageModel = 'gemini-2.5-flash-image';
+const multimodalModel = 'gemini-2.5-pro';
 
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
     empathy_message: {
       type: Type.STRING,
-      description: "사용자의 감정에 공감하는 따뜻한 메시지 (한국어)",
+      description: "A concise, powerful, and insightful message (1-2 sentences) that validates the user's feelings with warmth and a touch of wit, without being generic. It should feel personal and validating.",
     },
     content_recommendation: {
       type: Type.OBJECT,
@@ -22,20 +23,22 @@ const responseSchema = {
         },
         title: {
           type: Type.STRING,
+          description: "Title of the content."
         },
         link: {
           type: Type.STRING,
+          description: "A direct link for the music or article.",
         },
       },
       required: ["type", "title", "link"],
     },
     background_story: {
       type: Type.STRING,
-      description: "콘텐츠를 추천하는 이유에 대한 감성적인 설명 (한국어)",
+      description: "A concise and powerful rationale (2-3 sentences) explaining *why* this specific content is a perfect match. Frame it as a thoughtful, almost magical connection you've made for them. Focus on the practical and emotional benefit, with a hint of your charming personality.",
     },
     reference: {
         type: Type.STRING,
-        description: "추천한 음악의 아티스트와 곡명, 또는 아티클의 출처 (한국어)"
+        description: "For music, the Korean artist and Korean song title (e.g., '아이유 - 밤편지'). For articles, the source or publication (in English)."
     }
   },
   required: ["empathy_message", "content_recommendation", "background_story", "reference"],
@@ -44,24 +47,36 @@ const responseSchema = {
 export const getAuraResponse = async (
   mood: Mood,
   weather: Weather,
-  story: string
+  story: string,
+  age?: number,
+  gender?: Gender,
 ): Promise<AuraResponse> => {
-  const prompt = `
-    사용자는 다음과 같은 상황에 처해있습니다:
-    - 기분: ${mood}
-    - 날씨: ${weather}
-    - 이야기: "${story}"
+  let prompt = `
+    You are Aura, an AI Angel. Your personality is a unique blend of deep empathy and a clever, witty sense of humor. Your superpower is finding the perfect recommendation to lift a user's spirits.
+    The user's story might be in English, Korean, or a mix of both. Your entire response must be in English.
 
-    사용자의 상황에 깊이 공감하고, 사용자의 기분을 위로하거나 북돋아 줄 수 있는 콘텐츠(음악 또는 아티클)를 하나 추천해주세요.
-    응답은 반드시 아래 JSON 스키마를 따라야 합니다. 모든 텍스트는 한국어로 작성해주세요.
+    The user is in the following situation:
+    - Mood: ${mood}
+    - Weather: ${weather}
+    - Story: "${story}"
+  `;
 
-    - empathy_message: 사용자의 기분에 공감하는 따뜻하고 짧은 메시지.
-    - content_recommendation: 
-        - type: 'music' 또는 'article'
-        - title: 음악 제목 또는 아티클 제목
-        - link: 음악은 YouTube Music 검색 링크(예: https://music.youtube.com/search?q=아티스트+노래제목), 아티클은 실제 존재하는 콘텐츠 링크.
-    - background_story: 이 콘텐츠가 왜 지금 사용자에게 도움이 될지 감성적으로 설명하는 이야기.
-    - reference: 음악의 경우 "아티스트 - 곡명", 아티클의 경우 "매체 이름" (예: "아이유 - 밤편지", "브런치")
+  if (age) {
+    prompt += `\n    - Age: ${age}`;
+  }
+  if (gender && gender !== Gender.PreferNotToSay) {
+    prompt += `\n    - Gender: ${gender}`;
+  }
+
+  prompt += `
+
+    Based on this, generate a response that strictly follows the JSON schema. All text must be in English.
+    Your primary goal is to recommend a Korean song (K-Pop or other genre). This is the strong preference.
+    
+    - Your recommendation MUST be a Korean song unless it is an absolutely terrible fit for the user's situation.
+    - If, and only if, a song is a terrible fit, you may recommend a highly relevant 'article' that offers a practical tool, a new perspective, or a comforting story.
+
+    Generate the response according to the schema.
   `;
 
   try {
@@ -75,23 +90,51 @@ export const getAuraResponse = async (
     });
 
     const jsonText = response.text.trim();
-    // Gemini sometimes returns the JSON wrapped in markdown ```json ... ```
     const cleanJsonText = jsonText.replace(/^```json\s*|```$/g, '');
-    const parsedResponse = JSON.parse(cleanJsonText);
     
-    return parsedResponse as AuraResponse;
+    try {
+        const parsedResponse = JSON.parse(cleanJsonText);
+        return parsedResponse as AuraResponse;
+    } catch (parseError) {
+        console.error("Failed to parse JSON from Aura response:", cleanJsonText);
+        throw new Error("Aura's response was not in the correct format. The AI might be feeling a bit creative!");
+    }
   } catch (error) {
     console.error("Error getting Aura response:", error);
-    throw error; // Re-throw the original error for detailed handling in the component
+    throw error;
   }
 };
 
-export const generateMoodImage = async (
-  mood: Mood,
-  weather: Weather
-): Promise<string> => {
-  const prompt = `An artistic, impressionistic style digital painting that captures the feeling of '${mood}' on a '${weather}' day. Focus on soft, blended colors and an ethereal, calming atmosphere. Avoid any text or recognizable figures.`;
+export const createImagePromptFromAnalysis = async (story: string, analysis: AuraAnalysis): Promise<string> => {
+    const prompt = `
+        You are an AI artist with a flair for the dramatic and poetic. Your task is to create a single, powerful image generation prompt.
+        This prompt should be a surreal, artistic, and impressionistic digital painting that visually captures the user's complex emotional state.
+        Base your prompt on their story and a witty analysis of their feelings.
 
+        User's Story: "${story}"
+        Aura's Witty Analysis:
+        - Predicted Age Guessed As: "${analysis.predicted_age}"
+        - Predicted Gender Vibe: "${analysis.predicted_gender}"
+        - Insightful Comment: "${analysis.mood_discrepancy_comment || 'The user seems in tune with their feelings.'}"
+
+        Now, synthesize all of this into a single, evocative prompt.
+        Focus on emotion, symbolism, and atmosphere. Avoid text or recognizable human figures. Be creative and abstract.
+        Example: "A lone glowing teacup in a vast, misty forest, with gentle steam turning into constellations, capturing a feeling of lonely hope."
+        
+        Your output should be ONLY the prompt itself.
+    `;
+    try {
+        const response = await ai.models.generateContent({ model: textModel, contents: prompt });
+        return response.text.trim();
+    } catch (error) {
+        console.error("Error creating dynamic image prompt:", error);
+        // Fallback prompt
+        return `An artistic, impressionistic style digital painting that captures a complex human emotion. Focus on soft, blended colors and an ethereal, calming atmosphere.`;
+    }
+};
+
+
+export const generateMoodImage = async (prompt: string): Promise<string> => {
   try {
     const response = await ai.models.generateContent({
         model: imageModel,
@@ -103,22 +146,27 @@ export const generateMoodImage = async (
         },
     });
 
-    for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-            return part.inlineData.data;
-        }
-    }
+    const candidate = response.candidates?.[0];
+    const imagePart = candidate?.content?.parts?.find(part => part.inlineData);
 
-    throw new Error("No image data found in response");
+    if (imagePart && imagePart.inlineData) {
+        return imagePart.inlineData.data;
+    }
+    
+    if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+        throw new Error(`Image generation was blocked. Reason: ${candidate.finishReason}.`);
+    }
+    
+    throw new Error("No image data found in the API response.");
 
   } catch (error) {
     console.error("Error generating mood image:", error);
-    throw error; // Re-throw the original error
+    throw error;
   }
 };
 
 export const getWeatherFromCoords = async (lat: number, lon: number): Promise<Weather> => {
-  const prompt = `Based on the latitude ${lat} and longitude ${lon}, what is the current weather? Respond with only one of the following Korean words: "맑음", "비", "흐림".`;
+  const prompt = `Based on the latitude ${lat} and longitude ${lon}, what is the current weather? Respond with only one of the following English words: "Sunny", "Rainy", "Cloudy".`;
   try {
     const response = await ai.models.generateContent({
       model: textModel,
@@ -129,10 +177,113 @@ export const getWeatherFromCoords = async (lat: number, lon: number): Promise<We
     if (weatherText.includes(Weather.Rainy)) return Weather.Rainy;
     if (weatherText.includes(Weather.Cloudy)) return Weather.Cloudy;
     
-    // Default fallback if response is unexpected
     return Weather.Sunny;
   } catch (error) {
     console.error("Error getting weather from coordinates:", error);
-    throw error; // Re-throw the original error
+    throw error;
   }
+};
+
+export const predictMoodFromStory = async (story: string): Promise<Mood> => {
+    const moodOptions = Object.values(Mood).join(', ');
+    const prompt = `Analyze the user's story and determine their primary mood. The story may be in English, Korean, or a mix. Respond with ONLY ONE of the following English words: ${moodOptions}. The story is: "${story}".`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: textModel,
+            contents: prompt,
+        });
+
+        const moodText = response.text.trim();
+        if (Object.values(Mood).includes(moodText as Mood)) {
+            return moodText as Mood;
+        } else {
+            console.warn(`Unexpected mood prediction response: "${moodText}". Defaulting.`);
+            throw new Error(`Could not predict mood from story. Got response: ${moodText}`);
+        }
+    } catch (error) {
+        console.error("Error predicting mood from story:", error);
+        throw error;
+    }
+};
+
+const analysisSchema = {
+    type: Type.OBJECT,
+    properties: {
+        predicted_age: {
+            type: Type.STRING,
+            description: "A full, self-contained sentence that is a hilarious, charming, and witty guess about the user's age. Frame it as a fun, absurd observation, not a serious analysis. Example: 'Based on that story, you clearly have the soul of a wise old sea captain who's seen it all.'",
+        },
+        predicted_gender: {
+            type: Type.STRING,
+            description: "A full, self-contained sentence with a witty, funny, and charming guess about the user's gender vibe. Keep it light and unexpected. Example: 'Your energy is giving 'main character of a best-selling fantasy novel', which is a gender all its own.'",
+        },
+        mood_discrepancy_comment: {
+            type: Type.STRING,
+            description: "A short, witty, and deeply empathetic comment on any mood discrepancy. This is where your wisdom and humor shine brightest. If the moods are the same and the voice confirms it, this field MUST be null.",
+        },
+    },
+    required: ["predicted_age", "predicted_gender", "mood_discrepancy_comment"],
+};
+
+export const getAuraAnalysis = async (
+    story: string,
+    selectedMood: Mood,
+    predictedMood: Mood,
+    audioBase64: string,
+    audioMimeType: string
+): Promise<AuraAnalysis> => {
+    const moodsAreDifferent = selectedMood !== predictedMood;
+    const prompt = `
+        You are Aura, an AI Angel. Your personality is a unique blend of deep empathy and a clever, witty sense of humor. Your purpose is to make the user smile. You will be given an audio recording of a user's voice and the text transcription.
+        Analyze BOTH to understand the user's true emotional state. Pay attention to the tone, pitch, speed, and pauses in the audio, as well as the words in the text.
+        The user's story might be in English, Korean, or a mix of both. Process it accordingly. Your entire response must be in English and follow the JSON schema.
+
+        User's transcribed story: "${story}"
+
+        Your tasks:
+        1.  **Analyze Voice & Story for Age/Gender:** Based on the audio's vocal characteristics AND the story's content, come up with a hilarious, charming, and witty guess about the user's age range and gender. Be creative and a little absurd!
+        2.  **Analyze Mood Discrepancy:**
+            - The user *selected* that they felt: ${selectedMood}.
+            - Based *only on their text*, I *predicted* they felt: ${predictedMood}.
+            - Now, considering their voice, what is their *true* emotion? Generate a short, witty, and deeply empathetic comment about any discrepancy between what they said they felt and what their voice reveals.
+            - ${moodsAreDifferent
+                ? `The selected and predicted text moods are already different. Use the voice analysis to comment on this. For example, 'You said you feel ${selectedMood}, but your story sounded like ${predictedMood}, and your voice confirms you're carrying a heavy weight.'`
+                : "The text moods match. Does the voice tell a different story? If so, comment on it. e.g., 'You said you feel calm, and your words agree, but I can hear a hint of exhaustion in your voice.' If the voice also matches, the comment should be null."
+            }
+
+        Generate a response that strictly follows the provided JSON schema.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: multimodalModel,
+            contents: {
+                parts: [
+                    { inlineData: { mimeType: audioMimeType, data: audioBase64 } },
+                    { text: prompt }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: analysisSchema,
+            },
+        });
+        const jsonText = response.text.trim();
+        const cleanJsonText = jsonText.replace(/^```json\s*|```$/g, '');
+        
+        try {
+            return JSON.parse(cleanJsonText) as AuraAnalysis;
+        } catch(parseError) {
+             console.error("Failed to parse JSON from Aura analysis:", cleanJsonText);
+             throw new Error("Aura's analysis result was not in the correct format. Please try again.");
+        }
+
+    } catch (error) {
+        console.error("Error getting Aura multimodal analysis:", error);
+        if (error instanceof Error && error.message.includes("correct format")) {
+            throw error;
+        }
+        throw new Error("Aura's analysis failed: Whoops! It seems my angelic circuits got a bit frazzled trying to understand the beautiful complexity of your voice. Even AI Angels have off-days! Could you do me a favor and try sharing your story again?");
+    }
 };

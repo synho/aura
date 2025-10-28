@@ -1,15 +1,32 @@
 export enum Mood {
-  Joy = "기쁨",
-  Sadness = "슬픔",
-  Exhaustion = "지침",
-  Anxiety = "불안",
-  Calm = "평온",
+  Joy = "Joy",
+  Sadness = "Sadness",
+  Exhaustion = "Exhaustion",
+  Anxiety = "Anxiety",
+  Calm = "Calm",
+  Anger = "Anger",
+  Hopeful = "Hopeful",
+  Overwhelmed = "Overwhelmed",
+  Excited = "Excited",
+  Grateful = "Grateful",
+  Confused = "Confused",
+  Lonely = "Lonely",
+  Proud = "Proud",
+  Bored = "Bored",
+  Nostalgic = "Nostalgic",
 }
 
 export enum Weather {
-  Sunny = "맑음",
-  Rainy = "비",
-  Cloudy = "흐림",
+  Sunny = "Sunny",
+  Rainy = "Rainy",
+  Cloudy = "Cloudy",
+}
+
+export enum Gender {
+  Male = "Male",
+  Female = "Female",
+  Other = "Other",
+  PreferNotToSay = "Prefer not to say",
 }
 
 export interface ContentRecommendation {
@@ -23,4 +40,10 @@ export interface AuraResponse {
   content_recommendation: ContentRecommendation;
   background_story: string;
   reference: string;
+}
+
+export interface AuraAnalysis {
+  predicted_age: string;
+  predicted_gender: string;
+  mood_discrepancy_comment: string | null;
 }

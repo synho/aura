@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AURA - AI Angel</title>
+  <title>AURA - Your AI Angel</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -12,13 +12,33 @@
     body {
       font-family: 'Noto Sans KR', sans-serif;
     }
+
+    /* --- Animations --- */
+
+    @keyframes backgroundPan {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(10px); }
       to { opacity: 1; transform: translateY(0); }
     }
     .animate-fade-in {
-      animation: fadeIn 0.5s ease-in-out forwards;
+      animation: fadeIn 0.8s ease-out forwards;
+      opacity: 0; /* Start hidden */
     }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translate3d(0, 40px, 0); }
+      to { opacity: 1; transform: translate3d(0, 0, 0); }
+    }
+    .animate-fade-in-up {
+      animation: fadeInUp 1s ease-out forwards;
+      opacity: 0; /* Start hidden */
+    }
+
     @keyframes markerPopIn {
       0% {
         opacity: 0;
