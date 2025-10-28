@@ -117,10 +117,25 @@ const App: React.FC = () => {
           setLocationStatus(`The weather at your location is '${weather}'. Please select your mood!`);
         } catch (err) {
             console.error(err);
-            // Convert the unknown error to a string to reliably check for rate limit codes.
-            const errorString = JSON.stringify(err).toLowerCase();
+            
+            let isRateLimitError = false;
+            if (err) {
+                let messageToCheck = '';
+                if (err instanceof Error) {
+                    messageToCheck = err.message;
+                } else if (typeof err === 'object' && err !== null) {
+                    messageToCheck = JSON.stringify(err);
+                } else {
+                    messageToCheck = String(err);
+                }
 
-            if (errorString.includes('429') || errorString.includes('resource_exhausted')) {
+                messageToCheck = messageToCheck.toLowerCase();
+                if (messageToCheck.includes('429') || messageToCheck.includes('quota') || messageToCheck.includes('resource_exhausted')) {
+                    isRateLimitError = true;
+                }
+            }
+        
+            if (isRateLimitError) {
                 setLocationStatus("Aura is busy! Couldn't fetch weather, using a default for now.");
             } else {
                 const error = err instanceof Error ? err : new Error('Failed to fetch weather information.');

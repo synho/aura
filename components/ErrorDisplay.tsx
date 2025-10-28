@@ -14,10 +14,12 @@ const ErrorIcon = () => (
 
 const getErrorDetails = (error: Error) => {
     const message = error.message.toLowerCase();
+    // Stringify the entire error object for a more robust check, especially for API errors.
+    const errorString = JSON.stringify(error).toLowerCase();
     const rateLimitUrl = "https://ai.google.dev/gemini-api/docs/rate-limits";
     const usageUrl = "https://ai.dev/usage?tab=rate-limit";
 
-    if (message.includes('429') || message.includes('quota') || message.includes('resource_exhausted')) {
+    if (errorString.includes('429') || errorString.includes('quota') || errorString.includes('resource_exhausted')) {
         return {
             title: 'API Usage Limit Reached',
             description: "Aura is feeling very popular right now! It seems we've reached the current request limit for the AI service.",

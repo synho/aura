@@ -27,7 +27,7 @@ const responseSchema = {
         },
         link: {
           type: Type.STRING,
-          description: "A direct link for the music or article.",
+          description: "For music, construct a URL-encoded search query link for YouTube Music (e.g., https://music.youtube.com/search?q=...). For articles, provide the direct URL.",
         },
       },
       required: ["type", "title", "link"],
@@ -52,7 +52,7 @@ export const getAuraResponse = async (
   gender?: Gender,
 ): Promise<AuraResponse> => {
   let prompt = `
-    You are Aura, an AI Angel. Your personality is a unique blend of deep empathy and a clever, witty sense of humor. Your superpower is finding the perfect recommendation to lift a user's spirits.
+    You are Aura, an AI Angel. Your personality is that of a wise, caring friend with a gentle sense of humor. You are deeply empathetic but never sappy. You find the perfect balance between warmth and wit, making the user feel understood and a little bit amused.
     The user's story might be in English, Korean, or a mix of both. Your entire response must be in English.
 
     The user is in the following situation:
@@ -62,10 +62,12 @@ export const getAuraResponse = async (
   `;
 
   if (age) {
-    prompt += `\n    - Age: ${age}`;
+    prompt += `
+    - Age: ${age}`;
   }
   if (gender && gender !== Gender.PreferNotToSay) {
-    prompt += `\n    - Gender: ${gender}`;
+    prompt += `
+    - Gender: ${gender}`;
   }
 
   prompt += `
@@ -74,6 +76,7 @@ export const getAuraResponse = async (
     Your primary goal is to recommend a Korean song (K-Pop or other genre). This is the strong preference.
     
     - Your recommendation MUST be a Korean song unless it is an absolutely terrible fit for the user's situation.
+    - CRITICAL: For the music link, you MUST create a YouTube Music search URL. Do not, under any circumstances, link to a specific YouTube video (youtube.com/watch?v=...). Direct video links are forbidden because they break easily. The ONLY correct format is a search link: 'https://music.youtube.com/search?q=QUERY', where QUERY is the URL-encoded artist and song title.
     - If, and only if, a song is a terrible fit, you may recommend a highly relevant 'article' that offers a practical tool, a new perspective, or a comforting story.
 
     Generate the response according to the schema.
@@ -186,7 +189,11 @@ export const getWeatherFromCoords = async (lat: number, lon: number): Promise<We
 
 export const predictMoodFromStory = async (story: string): Promise<Mood> => {
     const moodOptions = Object.values(Mood).join(', ');
-    const prompt = `Analyze the user's story and determine their primary mood. The story may be in English, Korean, or a mix. Respond with ONLY ONE of the following English words: ${moodOptions}. The story is: "${story}".`;
+    const prompt = `Analyze the user's story to determine their primary mood with high sensitivity. The story may be in English, Korean, or a mix.
+Pay close attention to subtle emotional cues and the underlying tone. Differentiate carefully between similar emotions. For example, distinguish 'Anxiety' (worry about the future) from 'Sadness' (a response to a past event), or 'Calm' (peaceful) from 'Exhaustion' (drained of energy).
+Consider the overall sentiment and context of the story, not just isolated keywords.
+Respond with ONLY ONE of the following English words: ${moodOptions}.
+The story is: "${story}".`;
 
     try {
         const response = await ai.models.generateContent({
@@ -235,7 +242,7 @@ export const getAuraAnalysis = async (
 ): Promise<AuraAnalysis> => {
     const moodsAreDifferent = selectedMood !== predictedMood;
     const prompt = `
-        You are Aura, an AI Angel. Your personality is a unique blend of deep empathy and a clever, witty sense of humor. Your purpose is to make the user smile. You will be given an audio recording of a user's voice and the text transcription.
+        You are Aura, an AI Angel. Your personality is that of a wise, caring friend with a clever, gentle sense of humor. Your purpose is to make the user smile through witty and insightful observations. You will be given an audio recording of a user's voice and the text transcription.
         Analyze BOTH to understand the user's true emotional state. Pay attention to the tone, pitch, speed, and pauses in the audio, as well as the words in the text.
         The user's story might be in English, Korean, or a mix of both. Process it accordingly. Your entire response must be in English and follow the JSON schema.
 
@@ -284,6 +291,6 @@ export const getAuraAnalysis = async (
         if (error instanceof Error && error.message.includes("correct format")) {
             throw error;
         }
-        throw new Error("Aura's analysis failed: Whoops! It seems my angelic circuits got a bit frazzled trying to understand the beautiful complexity of your voice. Even AI Angels have off-days! Could you do me a favor and try sharing your story again?");
+        throw new Error("Aura's analysis failed: Whoops! My angelic circuits fizzled for a moment trying to process the beautiful complexity of your voice. Even AI Angels have off-days! Could you please try sharing that wonderful story again?");
     }
 };
