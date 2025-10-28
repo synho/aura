@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [selectedWeather, setSelectedWeather] = useState<Weather | null>(null);
   const [story, setStory] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<Error | null>(null);
   const [result, setResult] = useState<AuraResponse | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [coords, setCoords] = useState<{lat: number, lng: number} | null>(null);
@@ -63,7 +63,7 @@ const App: React.FC = () => {
 
       recognitionRef.current.onerror = (event) => {
         console.error('Speech recognition error', event.error);
-        setError('음성 인식 중 오류가 발생했습니다.');
+        setError(new Error('음성 인식 중 오류가 발생했습니다: ' + event.error));
         setIsListening(false);
       };
 
@@ -90,12 +90,16 @@ const App: React.FC = () => {
           setSelectedWeather(weather);
           setLocationStatus(`현재 위치의 날씨는 '${weather}'입니다. 기분을 선택해주세요!`);
         } catch (err) {
-          setLocationStatus('날씨 정보를 가져오지 못했습니다. 기본 날씨로 시작합니다.');
-          setSelectedWeather(Weather.Sunny); // Fallback
+            console.error(err);
+            setError(err instanceof Error ? err : new Error('날씨 정보를 가져오는 데 실패했습니다.'));
+            setLocationStatus('날씨 정보를 가져오지 못했습니다. 기본 날씨로 시작합니다.');
+            setSelectedWeather(Weather.Sunny); // Fallback
         }
       },
       (geoError) => {
         console.error("Geolocation error:", geoError);
+        const geoErrorMessage = "사용자 또는 시스템에 의해 위치 정보 요청이 거부되었습니다. (Geolocation Error)";
+        setError(new Error(geoErrorMessage));
         setLocationStatus('위치 정보를 가져올 수 없습니다. 기본 날씨로 시작합니다.');
         setSelectedWeather(Weather.Sunny); // Fallback
       }
@@ -114,16 +118,16 @@ const App: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMood) {
-      setError('먼저 지금 기분을 선택해주세요.');
+      setError(new Error('먼저 지금 기분을 선택해주세요.'));
       return;
     }
     if (!selectedWeather) {
-      setError('날씨 정보가 로딩 중입니다. 잠시 후 다시 시도해주세요.');
+      setError(new Error('날씨 정보가 로딩 중입니다. 잠시 후 다시 시도해주세요.'));
       return;
     }
 
     setIsLoading(true);
-    setError('');
+    setError(null);
     setResult(null);
     setImageUrl(null);
 
@@ -136,7 +140,7 @@ const App: React.FC = () => {
         setResult(auraResponseResult.value);
     } else {
         console.error(auraResponseResult.reason);
-        setError(auraResponseResult.reason instanceof Error ? auraResponseResult.reason.message : 'Aura의 답변을 받아오는 중 오류가 발생했습니다.');
+        setError(auraResponseResult.reason instanceof Error ? auraResponseResult.reason : new Error('Aura의 답변을 받아오는 중 오류가 발생했습니다.'));
     }
 
     if (moodImageResult.status === 'fulfilled') {
@@ -154,7 +158,7 @@ const App: React.FC = () => {
     setStory('');
     setResult(null);
     setImageUrl(null);
-    setError('');
+    setError(null);
     setIsLoading(false);
   };
   
@@ -163,9 +167,15 @@ const App: React.FC = () => {
       return <Loader />;
     }
     
+    // Show error first if it exists, unless there's also a valid result
+    if (error && !result) {
+        return <ErrorDisplay error={error} onClearError={() => setError(null)} />;
+    }
+
     if (result) {
       return (
         <div className="animate-fade-in">
+          {error && <ErrorDisplay error={error} onClearError={() => setError(null)} />}
           <ResultCard data={result} imageUrl={imageUrl} />
           {coords && <MapDisplay coords={coords} mood={selectedMood} />}
           <div className="text-center mt-8">
@@ -182,11 +192,13 @@ const App: React.FC = () => {
 
     return (
       <form onSubmit={handleSubmit} className="space-y-6 animate-fade-in">
-        <MoodSelector selectedMood={selectedMood} onSelectMood={(mood) => { setSelectedMood(mood); setError(''); }} />
+        <MoodSelector selectedMood={selectedMood} onSelectMood={(mood) => { setSelectedMood(mood); setError(null); }} />
 
         <div className="text-center text-gray-600 text-sm p-3 bg-purple-50 rounded-lg border border-purple-200">
            <p>{locationStatus}</p>
         </div>
+        
+        {error && <ErrorDisplay error={error} onClearError={() => setError(null)} />}
 
         <div>
           <label htmlFor="story" className="block text-lg font-semibold text-gray-700 mb-3 text-center">
@@ -238,8 +250,7 @@ const App: React.FC = () => {
         </header>
 
         <main className="bg-white/60 backdrop-blur-md p-6 sm:p-8 rounded-2xl shadow-lg border border-purple-100 min-h-[30rem] flex flex-col justify-center">
-          {error && <ErrorDisplay message={error} />}
-          {!error && renderContent()}
+          {renderContent()}
         </main>
       </div>
     </div>

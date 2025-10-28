@@ -82,7 +82,7 @@ export const getAuraResponse = async (
     return parsedResponse as AuraResponse;
   } catch (error) {
     console.error("Error getting Aura response:", error);
-    throw new Error("Aura의 응답을 받아오는 중 오류가 발생했습니다.");
+    throw error; // Re-throw the original error for detailed handling in the component
   }
 };
 
@@ -113,7 +113,7 @@ export const generateMoodImage = async (
 
   } catch (error) {
     console.error("Error generating mood image:", error);
-    throw new Error("기분에 맞는 이미지를 생성하는 중 오류가 발생했습니다.");
+    throw error; // Re-throw the original error
   }
 };
 
@@ -133,7 +133,6 @@ export const getWeatherFromCoords = async (lat: number, lon: number): Promise<We
     return Weather.Sunny;
   } catch (error) {
     console.error("Error getting weather from coordinates:", error);
-    // Return a default value in case of API error
-    return Weather.Sunny;
+    throw error; // Re-throw the original error
   }
 };
