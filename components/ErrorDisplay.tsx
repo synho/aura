@@ -39,6 +39,14 @@ const getErrorDetails = (error: Error) => {
             isRetryable: false
         };
     }
+    if (message.includes('speech recognition') && message.includes('network')) {
+        return {
+            title: 'Voice Connection Issue',
+            description: "Aura had trouble connecting to the voice recognition service. This can be a temporary network issue.",
+            suggestion: 'Please check your internet connection and click the microphone icon to try again.',
+            isRetryable: false
+        };
+    }
     if (message.includes('api key') || message.includes('permission denied')) {
         return {
             title: 'Service Connection Error',

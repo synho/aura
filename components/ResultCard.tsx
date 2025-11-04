@@ -1,6 +1,6 @@
 import React from 'react';
 import { AuraAnalysis, AuraResponse } from '../types';
-import { ArticleIcon, MusicIcon, SparklesIcon } from '../constants';
+import { ArticleIcon, FeatherIcon, MusicIcon, SparklesIcon } from '../constants';
 
 interface ResultCardProps {
   data: AuraResponse;
@@ -34,7 +34,7 @@ const AuraAnalysisDisplay: React.FC<{ analysis: AuraAnalysis | null }> = ({ anal
 };
 
 const ResultCard: React.FC<ResultCardProps> = ({ data, imageUrl, analysis }) => {
-  const { empathy_message, content_recommendation, background_story, reference } = data;
+  const { empathy_message, content_recommendation, background_story, reference, angelic_task } = data;
   const { type, title, link } = content_recommendation;
   const isMusic = type === 'music';
 
@@ -48,8 +48,18 @@ const ResultCard: React.FC<ResultCardProps> = ({ data, imageUrl, analysis }) => 
       <div className="space-y-6">
         <AuraAnalysisDisplay analysis={analysis} />
 
+        {angelic_task && (
+          <div className="animate-fade-in" style={{ animationDelay: '450ms' }}>
+            <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-2 flex items-center gap-2">
+              <FeatherIcon />
+              A Gentle Nudge from Aura
+            </h3>
+            <p className="text-gray-700 bg-purple-50/50 p-4 rounded-lg border border-purple-200 italic">{angelic_task}</p>
+          </div>
+        )}
+
         {imageUrl && (
-            <div className="animate-fade-in" style={{ animationDelay: '450ms' }}>
+            <div className="animate-fade-in" style={{ animationDelay: '600ms' }}>
                 <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-2">A Visualization of Your Feelings</h3>
                 <img
                     src={`data:image/png;base64,${imageUrl}`}
@@ -59,7 +69,7 @@ const ResultCard: React.FC<ResultCardProps> = ({ data, imageUrl, analysis }) => 
             </div>
         )}
 
-        <div className="animate-fade-in" style={{ animationDelay: '600ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: '750ms' }}>
           <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-2">Aura's Recommendation</h3>
           
            <a 
@@ -80,12 +90,12 @@ const ResultCard: React.FC<ResultCardProps> = ({ data, imageUrl, analysis }) => 
             </a>
         </div>
         
-        <div className="animate-fade-in" style={{ animationDelay: '750ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: '900ms' }}>
           <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-2">Why this was chosen for you</h3>
           <p className="text-gray-600 bg-gray-50 p-3 rounded-lg">{background_story}</p>
         </div>
 
-        <div className="animate-fade-in" style={{ animationDelay: '900ms' }}>
+        <div className="animate-fade-in" style={{ animationDelay: '1050ms' }}>
           <h3 className="text-sm font-semibold text-purple-700 uppercase tracking-wider mb-2">Source</h3>
           <p className="text-gray-600 text-sm font-medium">{reference}</p>
         </div>

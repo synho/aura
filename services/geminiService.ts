@@ -3,6 +3,7 @@ import { AuraResponse, Gender, Mood, Weather, AuraAnalysis } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+const liteModel = 'gemini-flash-lite-latest';
 const textModel = 'gemini-2.5-flash';
 const imageModel = 'gemini-2.5-flash-image';
 const multimodalModel = 'gemini-2.5-pro';
@@ -38,16 +39,22 @@ const responseSchema = {
     },
     reference: {
         type: Type.STRING,
-        description: "For music, the Korean artist and Korean song title (e.g., '아이유 - 밤편지'). For articles, the source or publication (in English)."
-    }
+        description: "For music, the artist and song title, in its original language if applicable (e.g., '아이유 - 밤편지'). For articles, the source or publication (in English)."
+    },
+    angelic_task: {
+        type: Type.STRING,
+        description: "A simple, gentle, and actionable micro-task (1-2 sentences) tailored to the user's mood and situation. It should be something they can do right now to feel a little more grounded, mindful, or connected. Frame it as a kind, encouraging suggestion from a friend.",
+    },
   },
-  required: ["empathy_message", "content_recommendation", "background_story", "reference"],
+  required: ["empathy_message", "content_recommendation", "background_story", "reference", "angelic_task"],
 };
 
 export const getAuraResponse = async (
   mood: Mood,
   weather: Weather,
   story: string,
+  coords: {lat: number; lng: number} | null,
+  analysis: AuraAnalysis | null,
   age?: number,
   gender?: Gender,
 ): Promise<AuraResponse> => {
@@ -63,21 +70,35 @@ export const getAuraResponse = async (
 
   if (age) {
     prompt += `
-    - Age: ${age}`;
+    - Age (self-reported): ${age}`;
   }
   if (gender && gender !== Gender.PreferNotToSay) {
     prompt += `
-    - Gender: ${gender}`;
+    - Gender (self-reported): ${gender}`;
+  }
+  if (coords) {
+    prompt += `
+    - Location: Latitude ${coords.lat}, Longitude ${coords.lng}`;
+  }
+  if (analysis) {
+    prompt += `
+    
+    Additionally, I performed a voice and story analysis with these witty observations:
+    - Predicted Age Guessed As: "${analysis.predicted_age}"
+    - Predicted Gender Vibe: "${analysis.predicted_gender}"
+    - Insightful Comment on mood: "${analysis.mood_discrepancy_comment || 'The user seems in tune with their feelings.'}"
+    `;
   }
 
   prompt += `
 
-    Based on this, generate a response that strictly follows the JSON schema. All text must be in English.
-    Your primary goal is to recommend a Korean song (K-Pop or other genre). This is the strong preference.
+    Based on a holistic analysis of all this information (mood, weather, story, location, and voice analysis), generate a response that strictly follows the JSON schema. All text must be in English.
+    Your primary goal is to find the *perfect* song for this user, at this moment. The song can be from any country or genre. The most important thing is that it deeply resonates with their situation.
     
-    - Your recommendation MUST be a Korean song unless it is an absolutely terrible fit for the user's situation.
     - CRITICAL: For the music link, you MUST create a YouTube Music search URL. Do not, under any circumstances, link to a specific YouTube video (youtube.com/watch?v=...). Direct video links are forbidden because they break easily. The ONLY correct format is a search link: 'https://music.youtube.com/search?q=QUERY', where QUERY is the URL-encoded artist and song title.
+    - For the 'reference' field, provide the artist and song title, in its original language if applicable (e.g., '아이유 - 밤편지' or 'Stromae - Formidable').
     - If, and only if, a song is a terrible fit, you may recommend a highly relevant 'article' that offers a practical tool, a new perspective, or a comforting story.
+    - Finally, provide an 'angelic_task'. This should be a very simple, gentle, actionable micro-task the user can do *right now* to feel more grounded. Examples: 'Take three slow, deep breaths', 'Look out a window and name three things you see', 'Gently stretch your shoulders'. It must be tailored to their situation.
 
     Generate the response according to the schema.
   `;
@@ -172,7 +193,7 @@ export const getWeatherFromCoords = async (lat: number, lon: number): Promise<We
   const prompt = `Based on the latitude ${lat} and longitude ${lon}, what is the current weather? Respond with only one of the following English words: "Sunny", "Rainy", "Cloudy".`;
   try {
     const response = await ai.models.generateContent({
-      model: textModel,
+      model: liteModel,
       contents: prompt,
     });
     const weatherText = response.text.trim();
@@ -197,7 +218,7 @@ The story is: "${story}".`;
 
     try {
         const response = await ai.models.generateContent({
-            model: textModel,
+            model: liteModel,
             contents: prompt,
         });
 
@@ -288,6 +309,13 @@ export const getAuraAnalysis = async (
 
     } catch (error) {
         console.error("Error getting Aura multimodal analysis:", error);
+
+        // Check for rate limit error and re-throw the original object
+        const errorString = JSON.stringify(error).toLowerCase();
+        if (errorString.includes('429') || errorString.includes('quota') || errorString.includes('resource_exhausted')) {
+            throw error;
+        }
+
         if (error instanceof Error && error.message.includes("correct format")) {
             throw error;
         }

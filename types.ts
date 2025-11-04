@@ -40,6 +40,7 @@ export interface AuraResponse {
   content_recommendation: ContentRecommendation;
   background_story: string;
   reference: string;
+  angelic_task: string;
 }
 
 export interface AuraAnalysis {

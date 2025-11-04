@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mood, Weather, AuraResponse, Gender, AuraAnalysis } from './types';
-import { MicrophoneIcon, MOOD_OPTIONS, ShareIcon } from './constants';
+import { MicrophoneIcon, MOOD_OPTIONS, ShareIcon, ClipboardIcon } from './constants';
 import { getAuraResponse, generateMoodImage, getWeatherFromCoords, predictMoodFromStory, getAuraAnalysis, createImagePromptFromAnalysis } from './services/geminiService';
 import MoodSelector from './components/MoodSelector';
 import ResultCard from './components/ResultCard';
@@ -45,6 +45,7 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const [copied, setCopied] = useState(false);
+  const [shareFallbackText, setShareFallbackText] = useState<string | null>(null);
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -118,24 +119,20 @@ const App: React.FC = () => {
         } catch (err) {
             console.error(err);
             
-            let isRateLimitError = false;
-            if (err) {
-                let messageToCheck = '';
-                if (err instanceof Error) {
-                    messageToCheck = err.message;
-                } else if (typeof err === 'object' && err !== null) {
-                    messageToCheck = JSON.stringify(err);
-                } else {
-                    messageToCheck = String(err);
-                }
-
-                messageToCheck = messageToCheck.toLowerCase();
-                if (messageToCheck.includes('429') || messageToCheck.includes('quota') || messageToCheck.includes('resource_exhausted')) {
-                    isRateLimitError = true;
+            // Create a single string representation for a robust check.
+            let errorContent = '';
+            if (err instanceof Error) {
+                errorContent = err.message;
+            } else {
+                try {
+                    errorContent = JSON.stringify(err);
+                } catch {
+                    errorContent = String(err);
                 }
             }
-        
-            if (isRateLimitError) {
+
+
+            if (errorContent.toLowerCase().includes('resource_exhausted') || errorContent.includes('429')) {
                 setLocationStatus("Aura is busy! Couldn't fetch weather, using a default for now.");
             } else {
                 const error = err instanceof Error ? err : new Error('Failed to fetch weather information.');
@@ -247,7 +244,8 @@ const App: React.FC = () => {
               setAnalysis(analysisResult);
             } catch (err) {
               console.error("Failed during multimodal analysis:", err);
-              setError(err instanceof Error ? err : new Error("Aura couldn't analyze your voice."));
+              const errorToSet = err instanceof Error ? err : new Error(`Analysis failed: ${JSON.stringify(err)}`);
+              setError(errorToSet);
             } finally {
               setIsAnalyzing(false);
             }
@@ -292,11 +290,12 @@ const App: React.FC = () => {
     // Step 1: Get the main response
     let auraResponse;
     try {
-        auraResponse = await getAuraResponse(selectedMood, selectedWeather, story, ageAsNumber, gender);
+        auraResponse = await getAuraResponse(selectedMood, selectedWeather, story, coords, analysis, ageAsNumber, gender);
         setResult(auraResponse);
     } catch(err) {
         console.error(err);
-        setError(err instanceof Error ? err : new Error('An error occurred while fetching Aura\'s response.'));
+        const errorToSet = err instanceof Error ? err : new Error(`Failed to get Aura response: ${JSON.stringify(err)}`);
+        setError(errorToSet);
         setIsLoading(false);
         return;
     }
@@ -329,6 +328,7 @@ const App: React.FC = () => {
     setError(null);
     setAnalysis(null);
     setIsLoading(false);
+    setShareFallbackText(null);
   };
   
   const handleShare = async () => {
@@ -389,7 +389,8 @@ const App: React.FC = () => {
         setTimeout(() => setCopied(false), 2000);
       } catch (copyErr) {
         console.error('Error copying to clipboard:', copyErr);
-        alert(`Sharing is not supported on this browser/device. Here's the message to copy:\n\n${shareText}`);
+        setShareFallbackText(shareText);
+        setCopied(false);
       }
     }
   };
@@ -413,6 +414,32 @@ const App: React.FC = () => {
             analysis={analysis} 
            />
           {coords && <MapDisplay coords={coords} mood={selectedMood} />}
+
+          {shareFallbackText && (
+            <div className="mt-6 p-4 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 rounded-r-lg animate-fade-in">
+              <div className="flex">
+                <div className="py-1">
+                  <ClipboardIcon />
+                </div>
+                <div className="ml-3 flex-1">
+                  <p className="font-bold">Manual Copy Required</p>
+                  <p className="text-sm mt-1">Your browser's security settings prevent automatic copying. No worries! The share message is ready for you below.</p>
+                  <textarea
+                    readOnly
+                    className="w-full h-32 mt-2 p-2 text-xs bg-white border border-yellow-400 rounded-md focus:ring-1 focus:ring-yellow-500"
+                    value={shareFallbackText}
+                    onFocus={(e) => e.target.select()}
+                  />
+                  <div className="mt-2 text-center">
+                    <button onClick={() => setShareFallbackText(null)} className="px-3 py-1 bg-yellow-400/50 text-yellow-900 text-xs font-semibold rounded-full hover:bg-yellow-400 transition-colors">
+                      Got it!
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="text-center mt-8 flex justify-center items-center gap-4">
             <button
               onClick={resetForm}
